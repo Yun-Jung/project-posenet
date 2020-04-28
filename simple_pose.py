@@ -17,9 +17,9 @@ import numpy as np
 from PIL import Image
 from pose_engine import PoseEngine
 
-os.system('wget https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/'
-          'Hindu_marriage_ceremony_offering.jpg/'
-          '640px-Hindu_marriage_ceremony_offering.jpg -O couple.jpg')
+#os.system('wget https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/'
+#          'Hindu_marriage_ceremony_offering.jpg/'
+#          '640px-Hindu_marriage_ceremony_offering.jpg -O couple.jpg')
 pil_image = Image.open('couple.jpg')
 pil_image.resize((641, 481), Image.NEAREST)
 engine = PoseEngine('models/posenet_mobilenet_v1_075_481_641_quant_decoder_edgetpu.tflite')
