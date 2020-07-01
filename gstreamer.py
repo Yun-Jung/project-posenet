@@ -41,8 +41,8 @@ class GstPipeline:
 
         self.pipeline = Gst.parse_launch(pipeline)
         self.freezer = self.pipeline.get_by_name('freezer')
-        self.overlay = self.pipeline.get_by_name('overlay')
-        self.overlaysink = self.pipeline.get_by_name('overlaysink')
+        self.wayland = self.pipeline.get_by_name('wayland')
+        self.waylandsink = self.pipeline.get_by_name('waylandsink')
         appsink = self.pipeline.get_by_name('appsink')
         appsink.connect('new-sample', self.on_new_sample)
 
@@ -67,8 +67,8 @@ class GstPipeline:
         self.pipeline.get_state(Gst.CLOCK_TIME_NONE)
 
         # We're high latency on higher resolutions, don't drop our late frames.
-        if self.overlaysink:
-            sinkelement = self.overlaysink.get_by_interface(GstVideo.VideoOverlay)
+        if self.waylandsink:
+            sinkelement = self.waylandsink.get_by_interface(GstVideo.VideoOverlay)
         else:
             sinkelement = self.pipeline.get_by_interface(GstVideo.VideoOverlay)
         sinkelement.set_property('sync', False)
@@ -190,14 +190,14 @@ class GstPipeline:
 
             svg, freeze = self.render_callback(output, self.src_size, self.get_box())
             self.freezer.frozen = freeze
-            if self.overlaysink:
-                self.overlaysink.set_property('svg', svg)
-            elif self.overlay:
-                self.overlay.set_property('data', svg)
+            if self.waylandsink:
+                self.waylandsink.set_property('svg', svg)
+            elif self.wayland:
+                self.wayland.set_property('data', svg)
 
     def setup_window(self):
         # Only set up our own window if we have Coral overlay sink in the pipeline.
-        if not self.overlaysink:
+        if not self.waylandsink:
             return
 
         gi.require_version('GstGL', '1.0')
@@ -208,9 +208,9 @@ class GstPipeline:
             widget.queue_draw()
 
         # Needed to account for window chrome etc.
-        def on_widget_configure(widget, event, overlaysink):
+        def on_widget_configure(widget, event, waylandsink):
             allocation = widget.get_allocation()
-            overlaysink.set_render_rectangle(allocation.x, allocation.y,
+            waylandsink.set_render_rectangle(allocation.x, allocation.y,
                     allocation.width, allocation.height)
             return False
 
@@ -221,28 +221,28 @@ class GstPipeline:
         window.add(drawing_area)
         drawing_area.realize()
 
-        self.overlaysink.connect('drawn', on_gl_draw, drawing_area)
+        self.waylandsink.connect('drawn', on_gl_draw, drawing_area)
 
         # Wayland window handle.
-        wl_handle = self.overlaysink.get_wayland_window_handle(drawing_area)
-        self.overlaysink.set_window_handle(wl_handle)
+        wl_handle = self.waylandsink.get_wayland_window_handle(drawing_area)
+        self.waylandsink.set_window_handle(wl_handle)
 
         # Wayland display context wrapped as a GStreamer context.
-        wl_display = self.overlaysink.get_default_wayland_display_context()
-        self.overlaysink.set_context(wl_display)
+        wl_display = self.waylandsink.get_default_wayland_display_context()
+        self.waylandsink.set_context(wl_display)
 
-        drawing_area.connect('configure-event', on_widget_configure, self.overlaysink)
+        drawing_area.connect('configure-event', on_widget_configure, self.waylandsink)
         window.connect('delete-event', Gtk.main_quit)
         window.show_all()
 
         # The appsink pipeline branch must use the same GL display as the screen
         # rendering so they get the same GL context. This isn't automatically handled
         # by GStreamer as we're the ones setting an external display handle.
-        def on_bus_message_sync(bus, message, overlaysink):
+        def on_bus_message_sync(bus, message, waylandsink):
             if message.type == Gst.MessageType.NEED_CONTEXT:
                 _, context_type = message.parse_context_type()
                 if context_type == GstGL.GL_DISPLAY_CONTEXT_TYPE:
-                    sinkelement = overlaysink.get_by_interface(GstVideo.VideoOverlay)
+                    sinkelement = waylandsink.get_by_interface(GstVideo.VideoOverlay)
                     gl_context = sinkelement.get_property('context')
                     if gl_context:
                         display_context = Gst.Context.new(GstGL.GL_DISPLAY_CONTEXT_TYPE, True)
@@ -251,7 +251,7 @@ class GstPipeline:
             return Gst.BusSyncReply.PASS
 
         bus = self.pipeline.get_bus()
-        bus.set_sync_handler(on_bus_message_sync, self.overlaysink)
+        bus.set_sync_handler(on_bus_message_sync, self.waylandsink)
 
 def on_bus_message(bus, message, loop):
     t = message.type
@@ -341,7 +341,7 @@ def run_pipeline(inf_callback, render_callback, src_size,
     if detectCoralDevBoard():
         scale_caps = None
         PIPELINE += """ ! decodebin ! glupload ! glvideoflip video-direction={direction} ! tee name=t
-               t. ! {leaky_q} ! freezer name=freezer ! glsvgoverlaysink name=overlaysink
+               t. ! {leaky_q} ! freezer name=freezer ! glsvgwaylandsink name=waylandsink
                t. ! {leaky_q} ! glfilterbin filter=glbox name=glbox ! {sink_caps} ! {sink_element}
             """
     else:  # raspberry pi or linux
@@ -349,8 +349,8 @@ def run_pipeline(inf_callback, render_callback, src_size,
         scale = tuple(int(x * scale) for x in src_size)
         scale_caps = 'video/x-raw,width={width},height={height}'.format(width=scale[0], height=scale[1])
         PIPELINE += """ ! decodebin ! videoflip video-direction={direction} ! tee name=t
-               t. ! {leaky_q} ! videoconvert ! freezer name=freezer ! rsvgoverlay name=overlay
-                  ! videoconvert ! autovideosink
+               t. ! {leaky_q} ! videoconvert ! freezer name=freezer ! rsvgwayland name=wayland
+                  ! videoconvert ! fakesink
                t. ! {leaky_q} ! videoconvert ! videoscale ! {scale_caps} ! videobox name=box autocrop=true
                   ! {sink_caps} ! {sink_element}
             """
