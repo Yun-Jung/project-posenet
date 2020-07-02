@@ -340,9 +340,7 @@ def run_pipeline(inf_callback, render_callback, src_size,
     PIPELINE = 'v4l2src device=%s ! {src_caps}'%videosrc
     if detectCoralDevBoard():
         scale_caps = None
-        PIPELINE += """ ! decodebin ! glupload ! glvideoflip video-direction={direction} ! tee name=t
-               t. ! {leaky_q} ! freezer name=freezer ! glsvgwaylandsink name=waylandsink
-               t. ! {leaky_q} ! glfilterbin filter=glbox name=glbox ! {sink_caps} ! {sink_element}
+        PIPELINE += """ ! decodebin ! glupload ! glvideoflip video-direction={direction}
             """
     else:  # raspberry pi or linux
         scale = min(inference_size[0] / src_size[0], inference_size[1] / src_size[1])
